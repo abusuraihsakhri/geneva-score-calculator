@@ -1,0 +1,4 @@
+patient_id,age,sex,prior_vte,cancer,immobility,surgery
+P001,68,M,0,1,1,0
+P002,45,F,0,0,0,1
+P003,71,M,1,0,1,1
