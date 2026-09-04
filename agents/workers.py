@@ -5,7 +5,7 @@ Standard: CAP / CLSI / ISO Standards
 """
 import uuid
 from typing import Dict, Any, List, Optional
-from .models import SystemTaskPayload, AgentAlert, UrgencyLevel, SystemIntegrityStatus
+from .models import SystemTaskPayload, AgentAlert, UrgencyLevel
 
 
 class InvariantQCWorker:

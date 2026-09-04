@@ -1,8 +1,7 @@
 """
 Prometheus Operational Metrics Exporter for geneva-score-calculator.
 """
-import time
-from typing import Dict, Any
+from typing import Dict
 
 class SystemMetricsCollector:
     def __init__(self):

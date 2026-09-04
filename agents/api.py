@@ -1,7 +1,6 @@
 """
 FastAPI REST API Server for Geneva Score Calculator.
 """
-from typing import Dict, Any, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from .base import AuditLogger, PHIGuard
