@@ -10,7 +10,7 @@ The static browser app runs without Python, external services, cookies, analytic
 | --- | ---: |
 | Age >65 years | 1 |
 | Previous deep-vein thrombosis or PE | 3 |
-| Surgery or fracture within one month | 2 |
+| Surgery under general anesthesia or lower-limb fracture within one month | 2 |
 | Active malignancy | 2 |
 | Unilateral lower-limb pain | 3 |
 | Hemoptysis | 2 |
