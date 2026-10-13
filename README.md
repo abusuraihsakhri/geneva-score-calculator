@@ -40,13 +40,13 @@ Python 3.10+ is supported. The core `geneva.py` calculation uses only the standa
 
 ```bash
 python -m pip install -e '.[dev]'
-python geneva.py single --age 66 --heart-rate 95 --previous-dvt-pe --hemoptysis
+python geneva.py single --age 66 --heart-rate 95 --previous-dvt-pe --no-surgery-or-fracture-1mo --no-active-malignancy --no-unilateral-leg-pain --hemoptysis --no-deep-vein-tenderness-and-unilateral-edema
 python geneva.py batch --input sample.csv --output results.csv
 python -m pytest -q
 node --test web/calculator.test.cjs
 ```
 
-The example single case is 11 points (high). Individual criterion switches in the CLI default to false; age and heart rate are mandatory. For all-criteria-explicit evaluation, supply a JSON object with the eight fields:
+The example single case is 11 points (high). Every criterion must be assessed explicitly. CLI Boolean switches have a matching `--no-` form (for example, `--no-hemoptysis`); omitted switches are rejected. Age and heart rate are mandatory. For all-criteria-explicit evaluation, supply a JSON object with the eight fields:
 
 ```bash
 python geneva.py single --json '{"age":66,"heart_rate":95,"previous_dvt_pe":true,"surgery_or_fracture_1mo":false,"active_malignancy":false,"unilateral_leg_pain":false,"hemoptysis":true,"deep_vein_tenderness_and_unilateral_edema":false}'
