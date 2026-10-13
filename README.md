@@ -64,7 +64,7 @@ python cli.py serve --host 127.0.0.1 --port 8000
 
 Then open `http://127.0.0.1:8000/` for the same application. `POST /api/geneva` accepts the eight clinical fields as JSON, with actual JSON booleans for binary criteria, and returns `score`, `tier`, and `detail`. Interactive API docs are available at `/docs`.
 
-The original `cli.py audit/chat/batch/verify-audit` commands and legacy `/api/audit`, `/api/chat`, `/metrics`, and `/api/audit/logs` endpoints remain for compatibility. **These legacy prototype features are unrelated to the Revised Geneva score and must not be used to make clinical decisions.** The legacy HMAC audit log is process-local, not a durable compliant audit system. Do not expose the legacy server publicly without additional access controls.
+The original `cli.py audit/chat/batch/verify-audit` commands and legacy `/api/audit`, `/api/chat`, `/metrics`, and `/api/audit/logs` endpoints remain for compatibility. **These legacy prototype features are unrelated to the Revised Geneva score and must not be used to make clinical decisions.** The legacy HTTP endpoints `/api/audit`, `/api/chat`, and `/api/audit/logs` require an operator-provided `GENEVA_LEGACY_API_TOKEN` environment variable and a matching `X-Legacy-Token` request header; they return 403 otherwise. The legacy HMAC audit log is process-local, not a durable compliant audit system. Do not expose the legacy server publicly without additional access controls.
 
 ## Privacy, security, and compatibility
 
