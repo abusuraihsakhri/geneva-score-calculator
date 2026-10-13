@@ -11,7 +11,7 @@
   });
   const LABELS = Object.freeze({
     previous_dvt_pe: 'Previous DVT or PE',
-    surgery_or_fracture_1mo: 'Surgery or fracture within one month',
+    surgery_or_fracture_1mo: 'Surgery under general anesthesia or lower-limb fracture within one month',
     active_malignancy: 'Active malignancy',
     unilateral_leg_pain: 'Unilateral lower-limb pain',
     hemoptysis: 'Hemoptysis',
