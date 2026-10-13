@@ -155,7 +155,12 @@ def build_parser():
     single.add_argument("--age", type=float)
     single.add_argument("--heart-rate", type=float)
     for name in BOOLEAN_FACTORS:
-        single.add_argument("--" + name.replace("_", "-"), action="store_true")
+        switch = name.replace("_", "-")
+        group = single.add_mutually_exclusive_group()
+        group.add_argument("--" + switch, dest=name, action="store_true")
+        group.add_argument("--no-" + switch, dest=name, action="store_false")
+    # Omission is unknown, never implicitly a negative clinical finding.
+    single.set_defaults(**{name: None for name in BOOLEAN_FACTORS})
     batch = commands.add_parser("batch", help="Score a CSV of clinical criteria")
     batch.add_argument("--input", required=True)
     batch.add_argument("--output", required=True)
