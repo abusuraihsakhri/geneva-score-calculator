@@ -1,8 +1,10 @@
 """
 FastAPI REST API Server for Geneva Score Calculator.
 """
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, StrictBool
+from fastapi import FastAPI, HTTPException, Header, Depends
+import os
+import hmac
+from pydantic import BaseModel, Field, StrictBool, ConfigDict
 from fastapi.responses import FileResponse
 from pathlib import Path
 from geneva import calculate_score
@@ -37,14 +39,22 @@ def metrics():
     }
 
 
+
+def require_legacy_token(x_legacy_token: str | None = Header(default=None)):
+    """Disable the nonclinical legacy API unless an operator configures a token."""
+    expected = os.environ.get("GENEVA_LEGACY_API_TOKEN")
+    if not expected or not x_legacy_token or not hmac.compare_digest(expected, x_legacy_token):
+        raise HTTPException(status_code=403, detail="Legacy API access is disabled or unauthorized")
+
+
 @app.post("/api/audit")
-def api_audit(payload: SystemTaskPayload):
+def api_audit(payload: SystemTaskPayload, _auth: None = Depends(require_legacy_token)):
     dossier = supervisor.process_task(payload)
     return dossier.to_dict()
 
 
 @app.post("/api/chat")
-def api_chat(req: ChatRequest):
+def api_chat(req: ChatRequest, _auth: None = Depends(require_legacy_token)):
     try:
         ans = supervisor.query_supervisory_chat(req.query)
         return {"response": ans}
@@ -53,13 +63,14 @@ def api_chat(req: ChatRequest):
 
 
 @app.get("/api/audit/logs")
-def api_audit_logs():
+def api_audit_logs(_auth: None = Depends(require_legacy_token)):
     return {"audit_trail": AuditLogger.get_trail(), "verified": AuditLogger.verify_integrity()}
 
 
 # Independent clinical scoring endpoint; legacy audit endpoints above are unrelated.
 # The clinical calculator never forwards the submitted criteria to the audit agents.
 class GenevaScoreRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     age: float = Field(ge=0, le=120, allow_inf_nan=False)
     heart_rate: float = Field(gt=0, le=300, allow_inf_nan=False)
     previous_dvt_pe: StrictBool
