@@ -204,3 +204,21 @@ class TestSecurityAudit:
         redacted = PHIGuard.redact_phi("Patient MRN-12345 is positive")
         assert "REDACTED_IDENTIFIER" in redacted
         assert "MRN-12345" not in redacted
+
+
+def test_audit_signature_tamper_detection():
+    from agents.base import AuditTrail
+    trail = AuditTrail(secret_key="local-test-only-key")
+    trail.log("user", "tester", "TEST", {"status": "OK"})
+    assert trail.verify_integrity()
+    trail.logs[0]["actor"] = "attacker"
+    assert not trail.verify_integrity()
+
+
+def test_audit_exposed_copy_does_not_mutate_trail():
+    from agents.base import AuditTrail
+    trail = AuditTrail(secret_key="local-test-only-key")
+    trail.log("user", "tester", "TEST", {"status": "OK"})
+    entries = trail.get_trail()
+    entries[0]["actor"] = "attacker"
+    assert trail.verify_integrity()
