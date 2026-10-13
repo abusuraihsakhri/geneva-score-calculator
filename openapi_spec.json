@@ -2,113 +2,206 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Geneva Score Calculator API",
-    "description": "Enterprise Distributed Component Platform (Clinical & Cryptographic AI) adhering to CAP / CLSI / NIST Standards.",
-    "version": "3.0.0-ENTERPRISE",
-    "contact": {
-      "name": "Dr. Abu Suraih Sakhri",
-      "url": "https://github.com/abusuraihsakhri"
-    }
+    "version": "3.1.0",
+    "description": "Static overview. FastAPI /openapi.json is the authoritative generated schema. Only /api/geneva is the clinical score endpoint; legacy routes are not clinical decision tools."
   },
   "paths": {
-    "/health": {
+    "/": {
       "get": {
-        "summary": "Health and metadata check",
+        "summary": "Browser clinical calculator",
         "responses": {
           "200": {
-            "description": "System optimal"
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Server health check",
+        "responses": {
+          "200": {
+            "description": "Successful response"
           }
         }
       }
     },
     "/metrics": {
       "get": {
-        "summary": "Prometheus operational metrics",
+        "summary": "Legacy JSON operational counters",
         "responses": {
           "200": {
-            "description": "Prometheus text metrics"
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/geneva": {
+      "post": {
+        "summary": "Calculate validated Revised Geneva PE pretest probability score",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenevaScoreRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Score (0–22), tier and positive criteria",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "score": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 22
+                    },
+                    "tier": {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "intermediate",
+                        "high"
+                      ]
+                    },
+                    "detail": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid or missing clinical criteria"
           }
         }
       }
     },
     "/api/audit": {
       "post": {
-        "summary": "Dispatch task payload across specialized workers",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "task_id": {
-                    "type": "string"
-                  },
-                  "target_identifier": {
-                    "type": "string"
-                  },
-                  "primary_metric": {
-                    "type": "number"
-                  },
-                  "secondary_metric": {
-                    "type": "number"
-                  },
-                  "status_descriptor": {
-                    "type": "string"
-                  },
-                  "is_critical_flag": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "task_id",
-                  "target_identifier",
-                  "primary_metric"
-                ]
-              }
-            }
+        "summary": "Legacy nonclinical prototype audit (not Geneva score)",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Legacy-Token",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must match the server-side GENEVA_LEGACY_API_TOKEN; endpoint returns 403 when unset or invalid."
           }
-        },
+        ],
         "responses": {
           "200": {
-            "description": "Consensus dossier with HMAC signature"
+            "description": "Legacy prototype dossier"
+          },
+          "403": {
+            "description": "Legacy API disabled or unauthorized"
           }
         }
       }
     },
     "/api/chat": {
       "post": {
-        "summary": "Air-gapped supervisory conversational assistant",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "query": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "query"
-                ]
-              }
-            }
+        "summary": "Legacy deterministic mock chat",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Legacy-Token",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must match the server-side GENEVA_LEGACY_API_TOKEN; endpoint returns 403 when unset or invalid."
           }
-        },
+        ],
         "responses": {
           "200": {
-            "description": "Supervisory response"
+            "description": "Mock response"
+          },
+          "403": {
+            "description": "Legacy API disabled or unauthorized"
           }
         }
       }
     },
     "/api/audit/logs": {
       "get": {
-        "summary": "Retrieve and cryptographically verify HMAC audit trail",
+        "summary": "Legacy process-local audit log",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Legacy-Token",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must match the server-side GENEVA_LEGACY_API_TOKEN; endpoint returns 403 when unset or invalid."
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Cryptographic audit trail"
+            "description": "Process-local audit records"
+          },
+          "403": {
+            "description": "Legacy API disabled or unauthorized"
           }
         }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "GenevaScoreRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "age": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 120
+          },
+          "heart_rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 300
+          },
+          "previous_dvt_pe": {
+            "type": "boolean"
+          },
+          "surgery_or_fracture_1mo": {
+            "type": "boolean"
+          },
+          "active_malignancy": {
+            "type": "boolean"
+          },
+          "unilateral_leg_pain": {
+            "type": "boolean"
+          },
+          "hemoptysis": {
+            "type": "boolean"
+          },
+          "deep_vein_tenderness_and_unilateral_edema": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "age",
+          "heart_rate",
+          "previous_dvt_pe",
+          "surgery_or_fracture_1mo",
+          "active_malignancy",
+          "unilateral_leg_pain",
+          "hemoptysis",
+          "deep_vein_tenderness_and_unilateral_edema"
+        ]
       }
     }
   }
