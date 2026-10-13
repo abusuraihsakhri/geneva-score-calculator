@@ -14,7 +14,7 @@ from pathlib import Path
 # Canonical, explicit inputs prevent missing clinical findings being treated as absent.
 BOOLEAN_FACTORS = {
     "previous_dvt_pe": ("Previous DVT or PE", 3),
-    "surgery_or_fracture_1mo": ("Surgery or fracture within 1 month", 2),
+    "surgery_or_fracture_1mo": ("Surgery under general anesthesia or lower-limb fracture within 1 month", 2),
     "active_malignancy": ("Active malignancy", 2),
     "unilateral_leg_pain": ("Unilateral lower-limb pain", 3),
     "hemoptysis": ("Hemoptysis", 2),
