@@ -1,271 +1,77 @@
-# GENEVA Score Calculator
+# Revised Geneva Score Calculator
 
-> **Domain:** Clinical Decision Support & Biomedical Computing
-> **Reference Guidelines & Standards:** `Standard Clinical Formulations & ISO/IEC Quality Frameworks`
+A clinical pretest probability calculator for pulmonary embolism (PE) in patients with suspected PE. Implements the eight-variable **Revised Geneva Score**, not the original Geneva score or the simplified score.
 
-<div align="center">
+The static browser app runs without Python, external services, cookies, analytics, or a server. No clinical inputs are sent over the network by the browser calculator.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB.svg?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688.svg?logo=fastapi&logoColor=white)
-![Audit Trail](https://img.shields.io/badge/Audit-HMAC--SHA256_Tamper--Evident-brightgreen.svg)
-![Zero-PHI Guard](https://img.shields.io/badge/Guard-Zero--PHI_Outbound-blue.svg)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)
+## Clinical scoring
 
-</div>
+| Criterion | Points |
+| --- | ---: |
+| Age >65 years | 1 |
+| Previous deep-vein thrombosis or PE | 3 |
+| Surgery or fracture within one month | 2 |
+| Active malignancy | 2 |
+| Unilateral lower-limb pain | 3 |
+| Hemoptysis | 2 |
+| Heart rate 75–94 bpm | 3 |
+| Heart rate ≥95 bpm | 5 |
+| Deep-vein tenderness on palpation **and** unilateral edema | 4 |
 
----
+The heart-rate rows are mutually exclusive, so the maximum score is **22**.
 
-## 📖 What It Does
+- **Low:** 0–3 points
+- **Intermediate:** 4–10 points
+- **High:** 11–22 points
 
-Revised Geneva Score for PE (Pulmonary Embolism) probability assessment.
+This is a *pretest probability classification*, **not a percentage risk estimate, diagnostic result, or standalone clinical management algorithm**. Evaluation must follow the appropriate PE diagnostic pathway and clinical judgment. Incomplete criteria are rejected rather than assumed absent.
 
-- **Score Range:** 0-22 points with prevalence-calibrated tiers
-- **Points-based scoring** with tiered action thresholds
-- **Standard library only** for core calculation module (no external dependencies)
-- **Multi-agent consensus system** with FastAPI REST interface
+**Clinical reference:** Le Gal G, Righini M, Roy PM, et al. Prediction of pulmonary embolism in the emergency department: the revised Geneva score. *Ann Intern Med.* 2006;144:165–171. [PubMed](https://pubmed.ncbi.nlm.nih.gov/16461960/).
 
----
+## Browser application
 
-## ⚙️ Key Capabilities & Algorithmic Modules
+Open `web/index.html` in a modern browser. Select an explicit Yes/No answer for each clinical finding, enter age and heart rate, then choose **Calculate score**. The result displays the points, risk category, and scoring breakdown. **Clear form** discards the entered values.
 
-### Core Calculation (`geneva.py`)
-- **`calculate_score(present)`** — Calculate Geneva score from clinical factors
-- **`assess_row(row)`** — Assess a CSV row and map columns to score factors
-- **`process_csv(inp, out)`** — Batch process CSV files with patient data
-- **`main(argv)`** — CLI entry point for single evaluations and batch processing
+The production GitHub Pages workflow publishes only `web/index.html`, `web/calculator.js`, and `web/ui.js`. Check the repository's deployment status for the public URL; publication is not a prerequisite for offline use.
 
-### Enterprise Features (`agents/`)
-- **`agents/base.py`** — PHI Outbound Guard and HMAC-SHA256 Audit Trail
-- **`agents/supervisor.py`** — Multi-agent consensus orchestrator
-- **`agents/workers.py`** — Specialized QC, Safety, and Protocol Conformance workers
-- **`agents/api.py`** — FastAPI REST API server
+## Python installation and command line
 
----
+Python 3.10+ is supported. The core `geneva.py` calculation uses only the standard library.
 
-## 📐 Clinical Factors & Scoring
-
-| Factor | Points |
-|:-------|:-------|
-| Hypotension | 1 |
-| Tachycardia | 1 |
-| Tachypnea | 1 |
-| Fever | 1 |
-| Altered Mental Status | 1 |
-
-### Risk Tiers
-
-| Score | Tier | Action |
-|:------|:-----|:-------|
-| 0-2 | Low | Standard workup |
-| 3-4 | Moderate | Consider D-dimer testing |
-| 5+ | High | Proceed to CTA/VQ scan |
-
----
-
-## 💻 Installation
-
-### Local Installation
 ```bash
-# Clone the repository
-git clone https://github.com/abusuraihsakhri/geneva-score-calculator.git
-cd geneva-score-calculator
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# or
-.venv\Scripts\activate     # Windows
-
-# Install dependencies
-pip install fastapi uvicorn pydantic pytest
-```
-
-### Docker Deployment
-```bash
-docker build -t geneva-score-calculator .
-docker run -p 8000:8000 -e AUDIT_SECRET_KEY=your-secret-key geneva-score-calculator
-```
-
-Or using Docker Compose:
-```bash
-AUDIT_SECRET_KEY=your-secret-key docker-compose up
-```
-
----
-
-## 🔧 Usage
-
-### Command Line Interface
-
-#### 1. Single Patient Evaluation
-```bash
-python geneva.py single --age 68 --sex M
-python geneva.py single --age 45 --sex F --hypotension 1 --tachycardia 1
-```
-
-#### 2. JSON Input
-```bash
-python geneva.py single --json '{"Hypotension": 1, "Tachycardia": 1, "Tachypnea": 1}'
-```
-
-#### 3. Batch CSV Processing
-```bash
+python -m pip install -e '.[dev]'
+python geneva.py single --age 66 --heart-rate 95 --previous-dvt-pe --hemoptysis
 python geneva.py batch --input sample.csv --output results.csv
+python -m pytest -q
+node --test web/calculator.test.cjs
 ```
 
-#### 4. Enterprise CLI (Multi-Agent System)
+The example single case is 11 points (high). Individual criterion switches in the CLI default to false; age and heart rate are mandatory. For all-criteria-explicit evaluation, supply a JSON object with the eight fields:
+
 ```bash
-# Run audit evaluation
-python cli.py audit --task-id TASK-001 --primary 28.5 --secondary 14.2
+python geneva.py single --json '{"age":66,"heart_rate":95,"previous_dvt_pe":true,"surgery_or_fracture_1mo":false,"active_malignancy":false,"unilateral_leg_pain":false,"hemoptysis":true,"deep_vein_tenderness_and_unilateral_edema":false}'
+```
 
-# Interactive chat query
-python cli.py chat "Explain the scoring methodology"
+The CSV input requires these exact columns: `age`, `heart_rate`, `previous_dvt_pe`, `surgery_or_fracture_1mo`, `active_malignancy`, `unilateral_leg_pain`, `hemoptysis`, and `deep_vein_tenderness_and_unilateral_edema`. Use `true/false`, `yes/no`, or `1/0` for binary inputs. Additional columns are retained. Exported free-text cells that could be treated as spreadsheet formulas are escaped.
 
-# Verify audit trail integrity
-python cli.py verify-audit
+## Optional local API
 
-# Start REST API server
+Start the local FastAPI server:
+
+```bash
 python cli.py serve --host 127.0.0.1 --port 8000
 ```
 
-### Input Data Schema
+Then open `http://127.0.0.1:8000/` for the same application. `POST /api/geneva` accepts the eight clinical fields as JSON, with actual JSON booleans for binary criteria, and returns `score`, `tier`, and `detail`. Interactive API docs are available at `/docs`.
 
-| Field | Description | Type |
-|:------|:------------|:-----|
-| `Hypotension` | Blood pressure indicator | bool/int |
-| `Tachycardia` | Heart rate indicator | bool/int |
-| `Tachypnea` | Respiratory rate indicator | bool/int |
-| `Fever` | Temperature indicator | bool/int |
-| `Altered mental` | Mental status indicator | bool/int |
+The original `cli.py audit/chat/batch/verify-audit` commands and legacy `/api/audit`, `/api/chat`, `/metrics`, and `/api/audit/logs` endpoints remain for compatibility. **These legacy prototype features are unrelated to the Revised Geneva score and must not be used to make clinical decisions.** The legacy HMAC audit log is process-local, not a durable compliant audit system. Do not expose the legacy server publicly without additional access controls.
 
----
+## Privacy, security, and compatibility
 
-## 🌐 REST API
+The **static browser application** processes clinical criteria entirely in the user's browser without persistence or third-party requests. It does not ask for identifying data. The optional API processes request data on the host running the server; deployment, access control, and data governance are the operator's responsibility. No regulatory compliance or PHI de-identification is claimed.
 
-Start the server:
-```bash
-python cli.py serve
-```
+The browser application uses standard JavaScript and requires a current version of Chrome, Firefox, Safari, or Edge. No Pyodide/PyScript is needed. Python API dependencies are declared in `pyproject.toml`; the GitHub Actions matrix tests Python 3.10–3.12 and Node.js.
 
-### Endpoints
+## License
 
-| Method | Endpoint | Description |
-|:-------|:---------|:------------|
-| GET | `/health` | Health check |
-| GET | `/metrics` | Prometheus-style metrics |
-| POST | `/api/audit` | Submit task for evaluation |
-| POST | `/api/chat` | Query supervisor chat |
-| GET | `/api/audit/logs` | Get HMAC audit trail |
-
-### Example API Request
-```bash
-curl -X POST http://localhost:8000/api/audit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "TASK-001",
-    "target_identifier": "KEY-001",
-    "primary_metric": 28.5,
-    "secondary_metric": 14.2,
-    "status_descriptor": "NOMINAL",
-    "is_critical_flag": false
-  }'
-```
-
----
-
-## 🛡️ Security Features
-
-### Zero-PHI Outbound Guard
-- AST and regex inspection blocking SSNs, MRNs, phone numbers, and patient identifiers
-- Prevents accidental PHI leakage in audit logs and outputs
-
-### HMAC-SHA256 Audit Trail
-- Cryptographic, tamper-evident logging for every evaluation
-- **Important:** Set `AUDIT_SECRET_KEY` environment variable in production for consistent key management
-- If no key is set, a secure random key is generated per session (with warning)
-
-### Running with Secure Configuration
-```bash
-export AUDIT_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
-python cli.py serve
-```
-
----
-
-## 🧪 Testing
-
-Run the full test suite:
-```bash
-pytest -v
-```
-
-Run with coverage:
-```bash
-pytest -v --cov=. --cov-report=term-missing
-```
-
-### Test Structure
-- `test_geneva.py` — Core score calculation tests
-- `tests/test_geneva_score_calculator.py` — Multi-agent system tests
-- `tests/test_geneva_core.py` — Core module and security tests
-- `tests/test_enrichment.py` — Enrichment feature tests
-
-### Benchmark Simulation
-```bash
-python simulator.py 1000
-```
-
----
-
-## 🐳 Container Deployment
-
-```bash
-# Build and run with Docker
-docker build -t geneva-score-calculator .
-docker run -p 8000:8000 \
-  -e AUDIT_SECRET_KEY=your-secure-key \
-  geneva-score-calculator
-
-# Or use Docker Compose
-docker-compose up
-```
-
----
-
-## 📁 Project Structure
-
-```
-geneva-score-calculator/
-├── geneva.py              # Core Geneva score calculation
-├── cli.py                 # Enterprise CLI interface
-├── enrichment.py          # Clinical enrichment features
-├── simulator.py           # Benchmark simulation tool
-├── sample.csv             # Sample patient data
-├── Dockerfile             # Container build config
-├── docker-compose.yml     # Multi-container orchestration
-├── pyproject.toml         # Python package configuration
-├── agents/
-│   ├── __init__.py        # Package init
-│   ├── base.py            # Security, PHI guard, audit trail
-│   ├── models.py          # Pydantic data models
-│   ├── supervisor.py      # Multi-agent orchestrator
-│   ├── workers.py         # Specialized evaluation workers
-│   ├── api.py             # FastAPI REST server
-│   ├── llm_factory.py     # LLM provider abstraction
-│   ├── learning.py        # Bayesian calibration engine
-│   ├── metrics.py         # Prometheus metrics exporter
-│   └── streamer.py        # WebSocket telemetry broadcaster
-├── tests/
-│   ├── test_geneva_core.py
-│   ├── test_enrichment.py
-│   └── test_geneva_score_calculator.py
-└── web/
-    └── index.html         # Operations dashboard UI
-```
-
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
+[MIT](LICENSE).
