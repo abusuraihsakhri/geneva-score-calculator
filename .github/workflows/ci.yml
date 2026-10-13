@@ -35,3 +35,26 @@ jobs:
           node --check web/calculator.js
           node --check web/ui.js
           node --test web/calculator.test.cjs
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build --tag geneva-score-smoke .
+      - name: Run app and verify HTTP workflows
+        run: |
+          docker run -d --rm --name geneva-smoke -p 127.0.0.1:18000:8000 geneva-score-smoke
+          trap 'docker stop geneva-smoke' EXIT
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:18000/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18000/health | grep -q HEALTHY
+          curl -fsS http://127.0.0.1:18000/ | grep -q 'Revised Geneva Score'
+          curl -fsS http://127.0.0.1:18000/calculator.js | grep -q calculateScore
+          curl -fsS -X POST http://127.0.0.1:18000/api/geneva \
+            -H 'Content-Type: application/json' \
+            -d '{"age":66,"heart_rate":95,"previous_dvt_pe":true,"surgery_or_fracture_1mo":false,"active_malignancy":false,"unilateral_leg_pain":false,"hemoptysis":true,"deep_vein_tenderness_and_unilateral_edema":false}' \
+            | grep -q '"score":11'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18000/api/audit/logs)" = "403"
