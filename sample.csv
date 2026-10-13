@@ -1,4 +1,4 @@
-patient_id,age,sex,prior_vte,cancer,immobility,surgery
-P001,68,M,0,1,1,0
-P002,45,F,0,0,0,1
-P003,71,M,1,0,1,1
+case_id,age,heart_rate,previous_dvt_pe,surgery_or_fracture_1mo,active_malignancy,unilateral_leg_pain,hemoptysis,deep_vein_tenderness_and_unilateral_edema
+CASE-001,66,99,1,0,0,1,0,0
+CASE-002,40,74,0,0,0,0,0,0
+CASE-003,65,95,0,1,1,0,1,0

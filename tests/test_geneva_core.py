@@ -1,192 +1,158 @@
-"""
-Automated Pytest for geneva-score-calculator Core Module.
-Tests for calculate_score, process_csv, and error handling.
-"""
+"""Tests for Revised Geneva score, CSV handling, CLI, and security boundaries."""
+import csv
+import json
 import sys
 from pathlib import Path
-import tempfile
-import os
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import geneva
 
 
-class TestCalculateScore:
-    """Tests for the core calculate_score function."""
-
-    def test_empty_input(self):
-        """Empty input should return score 0 and low tier."""
-        result = geneva.calculate_score({})
-        assert result["score"] == 0
-        assert result["tier"] == "low"
-        assert result["detail"] == {}
-
-    def test_score_with_factors(self):
-        """Score with positive factors should sum correctly."""
-        present = {"Hypotension": 1, "Tachycardia": 1}
-        result = geneva.calculate_score(present)
-        assert result["score"] == 2
-        assert "Hypotension" in result["detail"]
-        assert "Tachycardia" in result["detail"]
-
-    def test_score_with_boolean_values(self):
-        """Boolean True values should be accepted."""
-        present = {"Fever": True, "Tachypnea": False}
-        result = geneva.calculate_score(present)
-        assert result["score"] == 1
-        assert "Fever" in result["detail"]
-        assert "Tachypnea" not in result["detail"]
-
-    def test_score_with_string_values(self):
-        """String 'yes'/'no' values should be accepted."""
-        present = {"Altered mental": "yes", "Fever": "no"}
-        result = geneva.calculate_score(present)
-        assert result["score"] == 1
-        assert "Altered mental" in result["detail"]
-
-    def test_score_with_y_n(self):
-        """Single letter y/n values should be accepted."""
-        present = {"Hypotension": "y", "Tachycardia": "n"}
-        result = geneva.calculate_score(present)
-        assert result["score"] == 1
-
-    def test_tier_moderate(self):
-        """Score of 3-4 should return moderate tier."""
-        present = {"Hypotension": 1, "Tachycardia": 1, "Tachypnea": 1}
-        result = geneva.calculate_score(present)
-        assert result["score"] == 3
-        assert result["tier"] == "moderate"
-
-    def test_tier_low_boundary(self):
-        """Score of 2 or less should return low tier."""
-        present = {"Hypotension": 1, "Tachycardia": 1}
-        result = geneva.calculate_score(present)
-        assert result["score"] == 2
-        assert result["tier"] == "low"
-
-    def test_tier_high(self):
-        """Score above 4 should return high tier."""
-        present = {"Hypotension": 1, "Tachycardia": 1, "Tachypnea": 1,
-                   "Fever": 1, "Altered mental": 1}
-        result = geneva.calculate_score(present)
-        assert result["score"] == 5
-        assert result["tier"] == "high"
-
-    def test_score_with_lowercase_keys(self):
-        """Lowercase keys should be matched."""
-        present = {"hypotension": 1, "tachycardia": 1}
-        result = geneva.calculate_score(present)
-        assert result["score"] == 2
+@pytest.fixture
+def normal():
+    return dict(age=40, heart_rate=70, previous_dvt_pe=False,
+                surgery_or_fracture_1mo=False, active_malignancy=False,
+                unilateral_leg_pain=False, hemoptysis=False,
+                deep_vein_tenderness_and_unilateral_edema=False)
 
 
-class TestProcessCSV:
-    """Tests for the CSV processing function."""
-
-    def test_file_not_found(self):
-        """Non-existent input file should raise FileNotFoundError."""
-        with pytest.raises(FileNotFoundError):
-            geneva.process_csv("nonexistent_file.csv", "output.csv")
-
-    def test_empty_csv(self):
-        """Empty CSV (no headers) should raise ValueError."""
-        fd, path = tempfile.mkstemp(suffix='.csv')
-        os.close(fd)
-        try:
-            with open(path, 'w') as f:
-                f.write("")
-            with pytest.raises(ValueError):
-                geneva.process_csv(path, "output.csv")
-        finally:
-            os.unlink(path)
-
-    def test_csv_no_data_rows(self):
-        """CSV with headers but no data should raise ValueError."""
-        fd, path = tempfile.mkstemp(suffix='.csv')
-        os.close(fd)
-        try:
-            with open(path, 'w') as f:
-                f.write("patient_id,age,sex\n")
-            with pytest.raises(ValueError):
-                geneva.process_csv(path, "output.csv")
-        finally:
-            os.unlink(path)
-
-    def test_valid_csv_processing(self):
-        """Valid CSV should be processed and results written."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
-            f.write("patient_id,age,sex,prior_vte,cancer,immobility,surgery\n")
-            f.write("P001,68,M,0,1,1,0\n")
-            f.write("P002,45,F,0,0,0,1\n")
-            f.flush()
-            input_path = f.name
-
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as out:
-            output_path = out.name
-
-        try:
-            results = geneva.process_csv(input_path, output_path)
-            assert len(results) == 2
-            assert "score" in results[0]
-            assert "tier" in results[0]
-            assert "detail" in results[0]
-
-            # Verify output file exists and has content
-            assert os.path.exists(output_path)
-            with open(output_path, 'r') as f:
-                content = f.read()
-                assert "score" in content
-                assert "tier" in content
-        finally:
-            os.unlink(input_path)
-            if os.path.exists(output_path):
-                os.unlink(output_path)
-
-    def test_output_directory_creation(self):
-        """Output directory should be created if it doesn't exist."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
-            f.write("patient_id,age,sex\n")
-            f.write("P001,68,M\n")
-            f.flush()
-            input_path = f.name
-
-        temp_dir = tempfile.mkdtemp()
-        output_path = os.path.join(temp_dir, "subdir", "output.csv")
-
-        try:
-            results = geneva.process_csv(input_path, output_path)
-            assert len(results) == 1
-            assert os.path.exists(output_path)
-        finally:
-            os.unlink(input_path)
-            # Clean up temp directory
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
+def test_no_criteria(normal):
+    assert geneva.calculate_score(normal) == {"score": 0, "tier": "low", "detail": {}}
 
 
-class TestCLI:
-    """Tests for the CLI main function."""
+def test_full_score_22(normal):
+    normal.update(age=66, heart_rate=95, **{k: True for k in geneva.BOOLEAN_FACTORS})
+    res = geneva.calculate_score(normal)
+    assert res["score"] == 22
+    assert res["tier"] == "high"
+    assert sum(res["detail"].values()) == 22
 
-    def test_single_command(self):
-        """Single command should return 0."""
-        result = geneva.main(["single", "--age", "68", "--sex", "M"])
-        assert result == 0
 
-    def test_batch_command_invalid_file(self):
-        """Batch command with invalid file should return error code."""
-        result = geneva.main(["batch", "--input", "nonexistent.csv", "--output", "out.csv"])
-        assert result == 1
+@pytest.mark.parametrize("heart_rate,expected", [(74, 0), (75, 3), (94, 3), (95, 5), (120, 5)])
+def test_heart_rate_boundaries(normal, heart_rate, expected):
+    normal["heart_rate"] = heart_rate
+    assert geneva.calculate_score(normal)["score"] == expected
 
-    def test_single_with_json(self):
-        """Single command with JSON input should work."""
-        result = geneva.main(["single", "--json", '{"Hypotension": 1}'])
-        assert result == 0
 
-    def test_single_with_invalid_json(self):
-        """Single command with invalid JSON should return error."""
-        result = geneva.main(["single", "--json", 'not valid json'])
-        assert result == 1
+@pytest.mark.parametrize("age,expected", [(65, 0), (65.1, 1), (66, 1)])
+def test_age_boundary(normal, age, expected):
+    normal["age"] = age
+    assert geneva.calculate_score(normal)["score"] == expected
+
+
+@pytest.mark.parametrize("score_input,tier", [
+    ({"previous_dvt_pe": True}, "low"),
+    ({"deep_vein_tenderness_and_unilateral_edema": True}, "intermediate"),
+    ({"heart_rate": 95, "previous_dvt_pe": True, "unilateral_leg_pain": True}, "high"),
+])
+def test_tier_boundaries(normal, score_input, tier):
+    normal.update(score_input)
+    assert geneva.calculate_score(normal)["tier"] == tier
+
+
+def test_individual_factor_weights(normal):
+    for factor, (_, weight) in geneva.BOOLEAN_FACTORS.items():
+        patient = {**normal, factor: "YES"}
+        assert geneva.calculate_score(patient)["score"] == weight
+
+
+@pytest.mark.parametrize("bad", [{}, None, [], {"age": 40}, {"heart_rate": 99}])
+def test_missing_criteria_rejected(bad):
+    with pytest.raises(ValueError, match="required criteria|object"):
+        geneva.calculate_score(bad)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("heart_rate", 0), ("heart_rate", 301), ("heart_rate", "nan"),
+    ("heart_rate", "inf"), ("age", -1), ("age", 121),
+    ("age", None), ("hemoptysis", ""), ("hemoptysis", "unknown"),
+    ("previous_dvt_pe", 2),
+])
+def test_invalid_inputs_rejected(normal, field, value):
+    normal[field] = value
+    with pytest.raises(ValueError):
+        geneva.calculate_score(normal)
+
+
+def test_cli_json(normal, capsys):
+    assert geneva.main(["single", "--json", json.dumps(normal)]) == 0
+    assert json.loads(capsys.readouterr().out)["score"] == 0
+
+
+def test_cli_argument_flags(capsys):
+    assert geneva.main(["single", "--age", "66", "--heart-rate", "95",
+                        "--previous-dvt-pe", "--no-surgery-or-fracture-1mo",
+                        "--no-active-malignancy", "--no-unilateral-leg-pain",
+                        "--hemoptysis",
+                        "--no-deep-vein-tenderness-and-unilateral-edema"]) == 0
+    assert json.loads(capsys.readouterr().out)["score"] == 11
+
+
+def test_cli_missing_assessment_rejected(capsys):
+    assert geneva.main(["single", "--age", "66", "--heart-rate", "95"]) == 1
+    assert "must be true/false" in capsys.readouterr().err
+
+
+def test_cli_invalid_json(capsys):
+    assert geneva.main(["single", "--json", "not json"]) == 1
+    assert "Invalid JSON" in capsys.readouterr().err
+
+
+def test_cli_missing_measurements(capsys):
+    assert geneva.main(["single"]) == 1
+    assert "age" in capsys.readouterr().err
+
+
+def test_csv_roundtrip(normal, tmp_path):
+    inp, out = tmp_path / "input.csv", tmp_path / "subdir" / "out.csv"
+    with inp.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["patient_id", *geneva.REQUIRED_FIELDS])
+        writer.writeheader()
+        writer.writerow({"patient_id": "=1+1", **normal})
+    rows = geneva.process_csv(inp, out)
+    assert rows[0]["score"] == 0
+    with out.open(newline="") as f:
+        actual = next(csv.DictReader(f))
+    assert actual["patient_id"] == "'=1+1"
+    assert actual["tier"] == "low"
+
+
+def test_csv_missing_headers(tmp_path):
+    inp = tmp_path / "input.csv"
+    inp.write_text("age,heart_rate\n65,75\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Missing required CSV columns"):
+        geneva.process_csv(inp, tmp_path / "out.csv")
+
+
+def test_csv_missing_row_value(tmp_path, normal):
+    inp = tmp_path / "input.csv"
+    with inp.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(geneva.REQUIRED_FIELDS))
+        writer.writeheader()
+        writer.writerow({**normal, "hemoptysis": ""})
+    with pytest.raises(ValueError, match="CSV row 2"):
+        geneva.process_csv(inp, tmp_path / "out.csv")
+
+
+def test_csv_cannot_overwrite_input(tmp_path, normal):
+    inp = tmp_path / "input.csv"
+    inp.write_text(",".join(geneva.REQUIRED_FIELDS) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="different"):
+        geneva.process_csv(inp, inp)
+
+
+def test_csv_file_not_found(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        geneva.process_csv(tmp_path / "missing.csv", tmp_path / "out.csv")
+
+
+def test_csv_no_data_rows(tmp_path):
+    inp = tmp_path / "empty.csv"
+    inp.write_text(",".join(geneva.REQUIRED_FIELDS) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="no data"):
+        geneva.process_csv(inp, tmp_path / "out.csv")
 
 
 class TestSecurityAudit:
@@ -246,3 +212,21 @@ class TestSecurityAudit:
         redacted = PHIGuard.redact_phi("Patient MRN-12345 is positive")
         assert "REDACTED_IDENTIFIER" in redacted
         assert "MRN-12345" not in redacted
+
+
+def test_audit_signature_tamper_detection():
+    from agents.base import AuditTrail
+    trail = AuditTrail(secret_key="local-test-only-key")
+    trail.log("user", "tester", "TEST", {"status": "OK"})
+    assert trail.verify_integrity()
+    trail.logs[0]["actor"] = "attacker"
+    assert not trail.verify_integrity()
+
+
+def test_audit_exposed_copy_does_not_mutate_trail():
+    from agents.base import AuditTrail
+    trail = AuditTrail(secret_key="local-test-only-key")
+    trail.log("user", "tester", "TEST", {"status": "OK"})
+    entries = trail.get_trail()
+    entries[0]["actor"] = "attacker"
+    assert trail.verify_integrity()

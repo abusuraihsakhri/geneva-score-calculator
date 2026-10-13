@@ -1,158 +1,193 @@
 #!/usr/bin/env python3
-"""
-Revised Geneva Score for PE
-Revised Geneva (0-22) pulmonary embolism probability with prevalence-calibrated tiers.
-Points-based score with tiered action thresholds. Stdlib only.
+"""Revised Geneva Score for pretest probability of pulmonary embolism.
+
+Implements the eight-variable Revised Geneva Score (Le Gal et al., 2006).
+This is a pretest probability classification, NOT a PE diagnosis or disposition rule.
 """
 import argparse
 import csv
 import json
-import os
+import math
 import sys
 from pathlib import Path
 
-FACTORS = [
-        ("Hypotension",1),
-        ("Tachycardia",1),
-        ("Tachypnea",1),
-        ("Fever",1),
-        ("Altered mental",1)
-]
+# Canonical, explicit inputs prevent missing clinical findings being treated as absent.
+BOOLEAN_FACTORS = {
+    "previous_dvt_pe": ("Previous DVT or PE", 3),
+    "surgery_or_fracture_1mo": ("Surgery under general anesthesia or lower-limb fracture within 1 month", 2),
+    "active_malignancy": ("Active malignancy", 2),
+    "unilateral_leg_pain": ("Unilateral lower-limb pain", 3),
+    "hemoptysis": ("Hemoptysis", 2),
+    "deep_vein_tenderness_and_unilateral_edema": (
+        "Pain on deep-vein palpation AND unilateral edema", 4
+    ),
+}
+REQUIRED_FIELDS = ("age", "heart_rate", *BOOLEAN_FACTORS)
 
-THRESHOLDS = [(2,"low"),(4,"moderate"),(100,"high")]
+
+def _number(value, name, lower, upper):
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be numeric")
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be numeric") from exc
+    if not math.isfinite(number) or not lower <= number <= upper:
+        raise ValueError(f"{name} must be between {lower} and {upper}")
+    return number
+
+
+def _boolean(value, name):
+    if isinstance(value, bool):
+        return value
+    if value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ("1", "true", "yes", "y"):
+            return True
+        if normalized in ("0", "false", "no", "n"):
+            return False
+    raise ValueError(f"{name} must be true/false or 1/0 (not blank)")
+
 
 def calculate_score(present):
-    """present: dict factor->bool or row dict with 1/0."""
-    score=0; detail={}
-    for name,w in FACTORS:
-        # accept 1/0, true/false, yes/no, present key in dict
-        val = present.get(name, present.get(name.lower().replace(" ","_"), 0))
-        is_pos = str(val).lower() in ("1","true","yes","y") or val==1 or val is True
-        # also auto-map common csv columns: age, sex, etc.
-        if not is_pos and name=="Age>60":
-            try: is_pos = float(present.get("age",0))>60
-            except: pass
-        if not is_pos and name=="Male":
-            is_pos = str(present.get("sex","")).upper()=="M"
-        if is_pos:
-            score+=w
-            detail[name]=w
-    # tier
-    tier="low"
-    for thr,label in THRESHOLDS:
-        if score<=thr: tier=label; break
-        tier=label
+    """Calculate a Revised Geneva score from all eight required criteria.
+
+    age: years; heart_rate: beats/minute; other fields: boolean.
+    Missing or invalid criteria raise ValueError rather than score as negative.
+    Returns score (0-22), tier, and positive components.
+    """
+    if not isinstance(present, dict):
+        raise ValueError("Input must be an object with all clinical criteria")
+    missing = [field for field in REQUIRED_FIELDS if field not in present]
+    if missing:
+        raise ValueError("Missing required criteria: " + ", ".join(missing))
+
+    age = _number(present["age"], "age", 0, 120)
+    heart_rate = _number(present["heart_rate"], "heart_rate", 1, 300)
+    detail = {}
+    if age > 65:
+        detail["Age >65 years"] = 1
+    if heart_rate >= 95:
+        detail["Heart rate >=95 bpm"] = 5
+    elif heart_rate >= 75:
+        detail["Heart rate 75-94 bpm"] = 3
+
+    for field, (label, points) in BOOLEAN_FACTORS.items():
+        if _boolean(present[field], field):
+            detail[label] = points
+
+    score = sum(detail.values())
+    tier = "low" if score <= 3 else "intermediate" if score <= 10 else "high"
     return {"score": score, "tier": tier, "detail": detail}
 
-def assess_row(row):
-    # row is dict from csv
-    # map csv columns to present
-    present = {}
-    for k,v in row.items():
-        present[k]=v
-        present[k.lower()]=v
-    # also map snake
-    return calculate_score(present)
 
-def _validate_file_path(path_str: str, must_exist: bool = False) -> Path:
-    """Validate and resolve a file path, preventing path traversal."""
-    path = Path(path_str).resolve()
-    if must_exist and not path.exists():
-        raise FileNotFoundError(f"Input file not found: {path_str}")
+def assess_row(row):
+    """Score one CSV record using the canonical field names."""
+    return calculate_score(row)
+
+
+def _validate_file_path(path_str, must_exist=False):
+    """Resolve an input/output path. This does not implement a filesystem sandbox."""
+    path = Path(path_str).expanduser().resolve()
     if must_exist and not path.is_file():
-        raise ValueError(f"Input path is not a file: {path_str}")
+        raise FileNotFoundError(f"Input CSV file not found: {path_str}")
     return path
 
 
+def _safe_spreadsheet_cell(value):
+    """Neutralize spreadsheet formula injection in forwarded CSV text fields."""
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + value
+    return value
+
+
 def process_csv(inp, out):
-    """Process a CSV file and append Geneva score results.
-
-    Args:
-        inp: Path to input CSV file with patient data.
-        out: Path to output CSV file for results.
-
-    Returns:
-        List of result dictionaries.
-
-    Raises:
-        FileNotFoundError: If input file does not exist.
-        ValueError: If input file is empty or has no headers.
-    """
+    """Validate and process a CSV containing every required criterion."""
     inp_path = _validate_file_path(inp, must_exist=True)
-    out_path = _validate_file_path(out, must_exist=False)
+    out_path = _validate_file_path(out)
+    if inp_path == out_path:
+        raise ValueError("Input and output CSV must be different files")
 
-    # Ensure output directory exists
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(inp_path, newline="", encoding="utf-8-sig") as f:
-        r = csv.DictReader(f)
-        fn = r.fieldnames
-        if not fn:
-            raise ValueError(f"Input CSV has no headers: {inp}")
-        rows = list(r)
+    with inp_path.open(newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        fields = reader.fieldnames
+        if not fields:
+            raise ValueError("Input CSV has no headers")
+        if len(fields) != len(set(fields)):
+            raise ValueError("Duplicate CSV column names are not allowed")
+        missing = [key for key in REQUIRED_FIELDS if key not in fields]
+        if missing:
+            raise ValueError("Missing required CSV columns: " + ", ".join(missing))
+        if any(key in fields for key in ("score", "tier", "detail")):
+            raise ValueError("CSV contains a reserved output column")
+        rows = list(reader)
 
     if not rows:
-        raise ValueError(f"Input CSV has no data rows: {inp}")
+        raise ValueError("Input CSV has no data rows")
 
     results = []
-    for row in rows:
-        res = assess_row(row)
-        merged = {
-            **row,
-            "score": res["score"],
-            "tier": res["tier"],
-            "detail": ";".join(res["detail"].keys())
-        }
-        results.append(merged)
+    for line_number, row in enumerate(rows, start=2):
+        if None in row:
+            raise ValueError(f"Too many columns on CSV row {line_number}")
+        try:
+            result = assess_row(row)
+        except ValueError as exc:
+            raise ValueError(f"CSV row {line_number}: {exc}") from exc
+        results.append({**row, "score": result["score"], "tier": result["tier"],
+                        "detail": ";".join(result["detail"])})
 
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(fn) + ["score", "tier", "detail"])
-        w.writeheader()
-        w.writerows(results)
-
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=[*fields, "score", "tier", "detail"])
+        writer.writeheader()
+        for result in results:
+            writer.writerow({k: _safe_spreadsheet_cell(v) for k, v in result.items()})
     return results
 
+
 def build_parser():
-    p=argparse.ArgumentParser(prog="geneva", description="Revised Geneva Score for PE")
-    sub=p.add_subparsers(dest="cmd", required=True)
-    s=sub.add_parser("single"); s.add_argument("--age", type=float); s.add_argument("--sex"); 
-    for name,_ in FACTORS:
-        s.add_argument("--"+name.lower().replace(" ","_").replace(">","_gt_").replace("/","_"), default="0")
-    s.add_argument("--json")
-    b=sub.add_parser("batch"); b.add_argument("--input", required=True); b.add_argument("--output", required=True)
-    return p
+    parser = argparse.ArgumentParser(description="Revised Geneva PE pretest probability score")
+    commands = parser.add_subparsers(dest="cmd", required=True)
+    single = commands.add_parser("single", help="Score all eight criteria")
+    single.add_argument("--json", help="JSON object with all eight criteria")
+    single.add_argument("--age", type=float)
+    single.add_argument("--heart-rate", type=float)
+    for name in BOOLEAN_FACTORS:
+        switch = name.replace("_", "-")
+        group = single.add_mutually_exclusive_group()
+        group.add_argument("--" + switch, dest=name, action="store_true")
+        group.add_argument("--no-" + switch, dest=name, action="store_false")
+    # Omission is unknown, never implicitly a negative clinical finding.
+    single.set_defaults(**{name: None for name in BOOLEAN_FACTORS})
+    batch = commands.add_parser("batch", help="Score a CSV of clinical criteria")
+    batch.add_argument("--input", required=True)
+    batch.add_argument("--output", required=True)
+    return parser
+
 
 def main(argv=None):
-    p = build_parser()
-    a = p.parse_args(argv)
+    args = build_parser().parse_args(argv)
     try:
-        if a.cmd == "single":
-            if a.json:
+        if args.cmd == "single":
+            if args.json is not None:
                 try:
-                    present = json.loads(a.json)
-                except json.JSONDecodeError as e:
-                    print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
-                    return 1
+                    present = json.loads(args.json)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSON: {exc}") from exc
             else:
-                present = {k: getattr(a, k) for k in vars(a) if k not in ("cmd", "json")}
-            res = calculate_score(present)
-            print(res)
+                present = {key: getattr(args, key) for key in BOOLEAN_FACTORS}
+                present.update(age=args.age, heart_rate=args.heart_rate)
+            print(json.dumps(calculate_score(present), sort_keys=True))
             return 0
-        if a.cmd == "batch":
-            res = process_csv(a.input, a.output)
-            print(f"Processed {len(res)} -> {a.output}")
-            return 0
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        results = process_csv(args.input, args.output)
+        print(f"Processed {len(results)} rows -> {args.output}")
+        return 0
+    except (ValueError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except OSError as e:
-        print(f"Error: I/O error: {e}", file=sys.stderr)
-        return 1
-    p.print_help()
-    return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

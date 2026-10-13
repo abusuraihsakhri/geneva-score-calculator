@@ -1,14 +1,12 @@
-version: '3.8'
-
 services:
   geneva-score-calculator:
     build: .
     container_name: geneva-score-calculator
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - AUDIT_SECRET_KEY=${AUDIT_SECRET_KEY:-}
-      - MODEL_PROVIDER=${MODEL_PROVIDER:-mock}
+      - GENEVA_LEGACY_API_TOKEN=${GENEVA_LEGACY_API_TOKEN:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
