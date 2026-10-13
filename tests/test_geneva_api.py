@@ -36,3 +36,21 @@ def test_api_missing_criterion_fails():
 def test_api_string_bool_rejected():
     with pytest.raises(ValidationError):
         GenevaScoreRequest(**_payload(hemoptysis="false"))
+
+
+def test_reject_unexpected_api_fields():
+    with pytest.raises(ValidationError):
+        GenevaScoreRequest(**_payload(patient_name="unexpected"))
+
+
+def test_legacy_api_requires_configured_token(monkeypatch):
+    from fastapi import HTTPException
+    from agents.api import require_legacy_token
+    monkeypatch.delenv("GENEVA_LEGACY_API_TOKEN", raising=False)
+    with pytest.raises(HTTPException) as exc:
+        require_legacy_token(None)
+    assert exc.value.status_code == 403
+    monkeypatch.setenv("GENEVA_LEGACY_API_TOKEN", "secret-for-test")
+    with pytest.raises(HTTPException):
+        require_legacy_token("wrong")
+    assert require_legacy_token("secret-for-test") is None
