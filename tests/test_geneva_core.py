@@ -83,8 +83,16 @@ def test_cli_json(normal, capsys):
 
 def test_cli_argument_flags(capsys):
     assert geneva.main(["single", "--age", "66", "--heart-rate", "95",
-                        "--hemoptysis", "--previous-dvt-pe"]) == 0
+                        "--previous-dvt-pe", "--no-surgery-or-fracture-1mo",
+                        "--no-active-malignancy", "--no-unilateral-leg-pain",
+                        "--hemoptysis",
+                        "--no-deep-vein-tenderness-and-unilateral-edema"]) == 0
     assert json.loads(capsys.readouterr().out)["score"] == 11
+
+
+def test_cli_missing_assessment_rejected(capsys):
+    assert geneva.main(["single", "--age", "66", "--heart-rate", "95"]) == 1
+    assert "must be true/false" in capsys.readouterr().err
 
 
 def test_cli_invalid_json(capsys):
